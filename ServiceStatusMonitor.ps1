@@ -11,6 +11,7 @@
                     Re-alerts every $ReAlertHours while still down.
     -Mode Digest    Always sends the full morning status report email.
     -Mode Test      Console output only. No email, no state changes.
+    -Mode Catalog   List the optional vendors that can be switched on with -Add.
 
   Every run also rewrites StatusDashboard.html next to this script.
 
@@ -24,7 +25,7 @@
     OK      = all clear
 #>
 param(
-    [ValidateSet('Watchdog','Digest','Test')]
+    [ValidateSet('Watchdog','Digest','Test','Catalog')]
     [string]$Mode = 'Watchdog',
 
     # Alert/digest recipient. Defaults to $env:SSM_EMAIL_TO, else the Outlook profile's own address.
@@ -34,7 +35,11 @@ param(
     # Leave empty to skip the SharePoint probe.
     [string]$SharePointHost = $env:SSM_SHAREPOINT_HOST,
 
-    [string]$Title = 'Service Status'
+    [string]$Title = 'Service Status',
+
+    # Extra vendors from the built-in catalog, by name (see -Mode Catalog).
+    # Defaults to $env:SSM_ADD_SERVICES, a comma-separated list, so the scheduled tasks pick it up.
+    [string[]]$Add = @(($env:SSM_ADD_SERVICES -split ',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 )
 
 $ErrorActionPreference = 'Stop'
@@ -108,12 +113,79 @@ $Services = @(
        Url  = 'https://status.atlassian.com'
        Link = 'https://status.atlassian.com' }
 
-    # More examples - any Atlassian Statuspage vendor is one entry:
-    #   @{ Name = 'Dropbox'; Type = 'statuspage'; Url = 'https://status.dropbox.com'; Link = 'https://status.dropbox.com' }
+    # More vendors: switch on catalog entries with -Add / SSM_ADD_SERVICES (below), or add any
+    # Atlassian Statuspage vendor here as one entry, e.g.
+    #   @{ Name = 'Example'; Type = 'statuspage'; Url = 'https://status.example.com'; Link = 'https://status.example.com' }
     # RSS feeds can be filtered to the product you care about:
     #   @{ Name = 'DigitalOcean Spaces'; Type = 'rss'; Url = 'https://status.digitalocean.com/history.rss'; WindowHours = 24
     #      RssSeverity = 'WARN'; TitleFilter = 'Spaces'; Link = 'https://status.digitalocean.com' }
 )
+
+# Optional vendors, all Atlassian Statuspage (summary.json verified live when added).
+# Switch on by name: -Add 'Dropbox','Duo'  or  SSM_ADD_SERVICES=Dropbox,Duo
+$Catalog = [ordered]@{
+    # Files & collaboration
+    'Dropbox'           = 'https://status.dropbox.com'
+    'Box'               = 'https://status.box.com'
+    'ShareFile'         = 'https://status.sharefile.com'
+    'Notion'            = 'https://www.notion-status.com'
+    'Miro'              = 'https://status.miro.com'
+    'Figma'             = 'https://status.figma.com'
+    'Grammarly'         = 'https://status.grammarly.com'
+    'Discord'           = 'https://discordstatus.com'
+    # Work management
+    'Asana'             = 'https://status.asana.com'
+    'monday.com'        = 'https://status.monday.com'
+    'ClickUp'           = 'https://status.clickup.com'
+    'Airtable'          = 'https://status.airtable.com'
+    # Identity & security
+    '1Password'         = 'https://status.1password.com'
+    'Duo'               = 'https://status.duo.com'
+    'JumpCloud'         = 'https://status.jumpcloud.com'
+    # Device management & remote support
+    'Jamf'              = 'https://status.jamf.com'
+    'Kandji'            = 'https://status.kandji.io'
+    'NinjaOne'          = 'https://status.ninjaone.com'
+    'Kaseya / Datto'    = 'https://status.kaseya.com'
+    'TeamViewer'        = 'https://status.teamviewer.com'
+    # Phones, messaging & CRM
+    'Dialpad'           = 'https://status.dialpad.com'
+    'GoTo'              = 'https://status.goto.com'
+    'Twilio / SendGrid' = 'https://status.twilio.com'
+    'HubSpot'           = 'https://status.hubspot.com'
+    # Cloud & developer
+    'DigitalOcean'      = 'https://status.digitalocean.com'
+    'Datadog'           = 'https://status.datadoghq.com'
+    'Sentry'            = 'https://status.sentry.io'
+    'HashiCorp'         = 'https://status.hashicorp.com'
+    'Vercel'            = 'https://www.vercel-status.com'
+    'Netlify'           = 'https://www.netlifystatus.com'
+    'Bitbucket'         = 'https://bitbucket.status.atlassian.com'
+    'Wasabi'            = 'https://status.wasabi.com'
+    # Finance & commerce
+    'QuickBooks'        = 'https://status.quickbooks.intuit.com'
+    'Xero'              = 'https://status.xero.com'
+    'Shopify'           = 'https://www.shopifystatus.com'
+}
+
+if ($Mode -eq 'Catalog') {
+    Write-Host ('{0} optional vendors. Enable with -Add or SSM_ADD_SERVICES (comma-separated names):' -f $Catalog.Count)
+    $Catalog.GetEnumerator() | ForEach-Object { '  {0,-19} {1}' -f $_.Key, $_.Value }
+    return
+}
+
+# -File passes '-Add a,b' as one string, so split on commas here as well
+$Add = @($Add | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+foreach ($want in $Add) {
+    $key = @($Catalog.Keys | Where-Object { $_ -ieq $want }) | Select-Object -First 1
+    if ($key) {
+        if (-not @($Services | Where-Object { $_.Name -eq $key }).Count) {
+            $Services += @{ Name = $key; Type = 'statuspage'; Url = $Catalog[$key]; Link = $Catalog[$key] }
+        }
+    } else {
+        Write-Warning ("'$want' is not in the catalog - run with -Mode Catalog to see the names")
+    }
+}
 
 # ----------------------------------------------------------------- logging --
 function Write-Log {

@@ -22,7 +22,21 @@ Every run also rewrites `StatusDashboard.html`, handy as a desktop shortcut.
 - **Google Cloud / Google Workspace**: incidents.json; active high-severity = DOWN, else WARN.
 - RSS feeds can be filtered to one product with `TitleFilter` (example in the script).
 
-Edit the `$Services` array to add or remove vendors. Any Atlassian Statuspage vendor is one line.
+### Optional vendors
+
+A built-in catalog of 35 more Statuspage vendors can be switched on by name, no editing required:
+files and collaboration (Dropbox, Box, ShareFile, Notion, Miro, Figma...), work management (Asana,
+monday.com, ClickUp, Airtable), identity (1Password, Duo, JumpCloud), device management and remote support
+(Jamf, Kandji, NinjaOne, Kaseya/Datto, TeamViewer), phones and messaging (Dialpad, GoTo, Twilio, HubSpot),
+cloud and developer platforms, and finance tools (QuickBooks, Xero, Shopify).
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File ServiceStatusMonitor.ps1 -Mode Catalog      # list names
+[Environment]::SetEnvironmentVariable('SSM_ADD_SERVICES', 'Dropbox,Duo,Jamf', 'User')          # tasks pick it up
+powershell -NoProfile -ExecutionPolicy Bypass -File ServiceStatusMonitor.ps1 -Mode Test -Add Box  # one-off try
+```
+
+For anything else, edit the `$Services` array. Any Atlassian Statuspage vendor is one line.
 Some vendors publish no machine-readable status feed at all; those can't be watched this way.
 
 ## Severity model
